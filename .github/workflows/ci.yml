@@ -1,11 +1,3 @@
-# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-maven
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
 name: Java CI with Maven
 
 on:
@@ -13,11 +5,18 @@ on:
     branches: [ "dev" ]
   pull_request:
     branches: [ "main" ]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   lint:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
     - name: Set up JDK 11
@@ -26,10 +25,15 @@ jobs:
         java-version: '11'
         distribution: 'temurin'
         cache: maven
-    - name: Build with Maven
-      run: mvn -B checkstyle:check -Dcheckstyle.configLocation=checkstyle.xml
+    - name: Checkstyle
+      run: mvn -B checkstyle:check -Dcheckstyle.config.location=checkstyle.xml
+
   tests:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
     steps:
     - uses: actions/checkout@v4
 
@@ -62,9 +66,45 @@ jobs:
 
     - name: Run tests (failures tolerated)
       if: steps.phase.outputs.value != 'phase:fix'
-      run: mvn -B -Dmaven.test.failure.ignore=true test
+      run: >
+        mvn -B -Dmaven.test.failure.ignore=true
+        org.jacoco:jacoco-maven-plugin:0.8.12:prepare-agent test
+
+    - name: Verify test reports exist
+      if: steps.phase.outputs.value != 'phase:fix'
+      run: |
+        if ! find . -path '*/target/surefire-reports/*.xml' | grep -q .; then
+          echo "::error title=Suite did not run::No surefire reports were produced."
+          exit 1
+        fi
 
     - name: Run tests (must pass)
       if: steps.phase.outputs.value == 'phase:fix'
-      run: mvn -B test
-  
+      run: mvn -B org.jacoco:jacoco-maven-plugin:0.8.12:prepare-agent test
+
+    # Informational from here on; never blocks merging
+    - name: Generate JaCoCo report
+      if: always() && steps.phase.outcome == 'success'
+      continue-on-error: true
+      run: mvn -B org.jacoco:jacoco-maven-plugin:0.8.12:report
+
+    - name: Publish JUnit results (failure list comment)
+      if: always() && steps.phase.outcome == 'success'
+      continue-on-error: true
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        files: '**/target/surefire-reports/*.xml'
+        check_name: JUnit results
+        comment_mode: ${{ github.event_name == 'pull_request' && 'always' || 'off' }}
+        list_tests: failed
+        fail_on: nothing
+
+    - name: Publish JaCoCo coverage comment
+      if: always() && steps.phase.outcome == 'success' && github.event_name == 'pull_request'
+      continue-on-error: true
+      uses: madrapps/jacoco-report@v1.7.1
+      with:
+        paths: ${{ github.workspace }}/**/target/site/jacoco/jacoco.xml
+        token: ${{ secrets.GITHUB_TOKEN }}
+        title: JaCoCo coverage
+        update-comment: true
