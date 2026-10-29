@@ -9,7 +9,17 @@ import org.junit.jupiter.api.Test;
 
 public class TransferFeesTest {
 
-    // decision table analysis
+    /*  decision table analysis     
+        - 4 condition vars = 2**4 = 16 rules
+            - is student?
+            - transfer amount 
+                - for student: < 200 or >= 200
+            - from balance
+            - to balance
+            - fee rates:
+                - student: 0.1%, 0.05%, 0.05%, 0.025%, 0.005%, 0.025%, 0.25%, 0.125%
+                - non-student: 0.2%, 0.1%, 1.0%, 0.5%, 0.2%, 0.1%, 0.5%, 0.25%
+    */
 
     private static final double DELTA = 1e-4;
     private FeesCalculator calculator;
@@ -18,7 +28,8 @@ public class TransferFeesTest {
     public void setUp() {
         calculator = new FeesCalculator();
     }
-
+    
+    // when students = true
     @Test
     @DisplayName("T_DT_01: Rule 1: student amount < 200, from < 2000, to < 1000 (0.1%)")
     public void testRule1(){
@@ -74,7 +85,7 @@ public class TransferFeesTest {
         double fee = calculator.calculateTransferFee(400.0, 2500.0, 1500.0, true);
         assertEquals(0.50, fee, DELTA);
     }
-// for non students
+// when student = false
     @Test
     @DisplayName("T_DT_09: Rule 9; Non-student, amount < 100, from < 4000, to <2000 (0.2%)")
     public void testRule9(){
@@ -103,7 +114,7 @@ public class TransferFeesTest {
         double fee = calculator.calculateTransferFee(50.0, 4500.0, 2500.0, false);
         assertEquals(0.25, fee, DELTA);
     }
-// check 
+ 
     @Test
     @DisplayName("T_DT_13: Rule 13 - Non-Student, amount >= 100, from < 2000, to < 1000 (0.2%)")
     public void testRule13() {
