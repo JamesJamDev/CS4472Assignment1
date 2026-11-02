@@ -58,7 +58,7 @@ The invalid classes are:
 - $IC_1$: amount $\le 0$
 - $IC_2$: balance $< 0$
 
-Under the **weak robust** approach, each test case covers one valid class for every variable, except that an invalid test case contains exactly one invalid value with all other inputs valid. This gives 8 valid test cases and 2 invalid test cases.
+Under the **weak robust** approach, each test case covers one valid class for every variable, except that an invalid test case contains exactly one invalid value with all other inputs valid. This ends up giving 8 valid test cases and 2 invalid test cases.
 
 #### Assumptions
 1. The specification does not state how invalid input should be handled. We assume that a negative amount or a negative balance result causes `IllegalArgumentException` to be thrown.
@@ -193,7 +193,7 @@ Ran suite with test failures tolerated (as instructed used `mvn -B -Dmaven.test.
 | **FL_TR_04** | `T_DT_13` – `T_DT_16` | `bank.utils.FeesCalculator.calculateTransferFee` | In the non-student $\ge \$100$ branch, an invalid multiplier rate of 5.5% is applied instead of 0.25%, producing inflated fees (e.g., $\$11.00$ on a $\$200.00$ transfer). |
 | **FL_DP_01** | `D_01`, `D_02` | `bank.utils.FeesCalculator.calculateDepositInterest` | The student branch tests `amount > 100.00` instead of the specified `$50.00`. A $100 deposit is "more than $50" per the specification, but the code treats it as a small deposit and applies 0.2%, giving 0.20 instead of 0.50 and 0.25. |
 | **FL_DP_02** | `D_04` | `bank.utils.FeesCalculator.calculateDepositInterest` | In the student, small-amount, low-balance branch, the code sets `interestPercentage = 0.002` where the specification says there is no fee, so a $30 deposit is charged 0.06 instead of 0.00. |
-| **FL_DP_03** | `D_05`, `D_06` | `bank.utils.FeesCalculator.calculateDepositInterest` | The non-student branch tests `amount > 500.00` instead of the specified `$250.00`. A $500 deposit is "more than $250" per the specification, but the code treats it as a small deposit with balance at most $10,000 and returns 0 instead of 4.00 and 2.00. |
+| **FL_DP_03** | `D_05`, `D_06` | `bank.utils.FeesCalculator.calculateDepositInterest` | The non-student branch tests `amount > 500.00` instead of the specified `$250.00`. A $500 deposit is more than $250 per the specification, but the code treats it as a small deposit with balance at $10,000 and returns 0 instead of 4.00 and 2.00. |
 | **FL_DP_04** | `D_07`, `D_08` | `bank.utils.FeesCalculator.calculateDepositInterest` | In the non-student, small-amount branch the rates are swapped. The code charges 0.5% when the balance is above $10,000 (expected none) and 0% when it is at most $10,000 (expected 0.1%). |
 | **FL_DP_05** | `D_09`, `D_10` | `bank.utils.FeesCalculator.calculateDepositInterest` | The method does no input validation. A negative amount or negative balance is accepted and no exception is thrown. |
 
