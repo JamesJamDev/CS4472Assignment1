@@ -3,7 +3,7 @@
 
 ---
 
-## Section 1 - Process and Assumptions
+## Section 1: Process and Assumptions
 
 
 ### Transfer Fee Calculation / Decision Table Analysis
@@ -73,10 +73,44 @@ Under the **weak robust** approach, each test case covers one valid class for ev
 
 
 
-### ATM Pink Format Validation
+### ATM Session
 
+#### Process 
 
+The `atm.session.Session` class was tested using Robust Worst Case Boundary Value Analysis.
 
+- **Path under test:** all tests call the `ATM` methods the UI uses (`checkPin()`, `setTransaction()`, `setFromAccount()`, `setAmount()`), so the `Session` state machine runs exactly as it does at runtime.
+- **Mocking:** the `MessageDispatcher` (bank communication) and `MainPanel` (UI) are mocked. `FormatChecker`, `CredentialsCheck` and `Session` are real objects, so all validation logic under test runs unmodified.
+- **Expected results** are derived from the specification, not from the code.
+
+#### Assumptions
+
+- The spec says to test the console version, but there’s no console class in the repo. We tested the `ATM`/`Session` path the UI uses.
+
+#### ATM Session Withdrawal Amount (TWA)
+
+- **1 variable** (amount), so robust worst case is equivalent to robust BVA: 7 points plus 2 extra cases.
+  - **BVA values:** min−1 = $0, min = $20, min+1 = $40, nom = $500, max−1 = $990, max = $1,000, max+1 = $1,010
+  - **Extra cases:** −$20 (negative amount) and $1,020 (the nearest amount above the limit that the code's validator accepts, added to isolate the daily-limit check).
+- **Assumptions:**
+  - The daily limit is fixed at $1,000 for all tests.
+  - Valid amounts are those that can be dispensed in $20 and $50 bills (per the assignment description), so boundary neighbours are the nearest valid bill amounts.
+  - A $5,000 account is simulated by stubbing `performTransaction()` to return a successful result with a balance of $5,000 minus the amount.
+  - Setup uses a 4-digit PIN because that is what the code currently accepts (the specification requires 5; see FL_PF_01). This keeps the amount tests single fault.
+  - ![BVA values for withdrawal amount with the $1,000 daily limit](images/twa-bva-line.png)
+
+#### ATM Session PIN Format (TPF)
+
+- **2 variables**, 21 test cases (7 × 3):
+  - **Character (ASCII):** `'/'`, `'0'`, `'1'`, `'4'`, `'8'`, `'9'`, `':'`
+    - `'/'` and `':'` are the characters immediately outside the `'0'`–`'9'` range.
+  - **Length:** 4, 5, 6
+    - The only valid length is 5 (min = max = nominal, labelled `nom`), so the robust points collapse to 3.
+- **Assumptions:**
+  - The same character is used in every position (e.g. length 4, `'0'` → `0000`), so mixed PINs such as `12/4` are not covered.
+  - No card is inserted in this test class, so the card number passed to the credentials check is `null`.
+  - The full worst-case grid (21 points) was used, which includes all single-fault points. The corner cases (invalid length and invalid character) are multi-fault, and since only one exception type is observable, these tests cannot show which fault triggered the rejection.
+  - ![BVA grid for PIN format: character (ASCII) vs. length](images/pin-bva-grid.png)
 
 ## Section 2: Test Case Tables
 
@@ -129,11 +163,51 @@ Under the **weak robust** approach, each test case covers one valid class for ev
 | **D_10** | Invalid balance (negative) | false | 100.00 | -500.00 | n/a | `IllegalArgumentException` |
 
 
-### Withdrawal Test cases
+### Withdrawal Test Cases
 
+### ATM Session Withdrawal Amount (TWA) Test Cases
 
-### ATM PIN Format Test Cases
+| Test ID     | Daily Limit | Withdrawal Amount | BVA Value | Expected                |
+| ----------- | ----------- | ----------------- | --------- | ----------------------- |
+| **TWA_CASE_01** | $1,000      | −$20              | extra     | InvalidAmountException  |
+| **TWA_CASE_02** | $1,000      | $0                | min−1     | InvalidAmountException  |
+| **TWA_CASE_03** | $1,000      | $20               | min       | Accepted (no exception) |
+| **TWA_CASE_04** | $1,000      | $40               | min+1     | Accepted (no exception) |
+| **TWA_CASE_05** | $1,000      | $500              | nom       | Accepted (no exception) |
+| **TWA_CASE_06** | $1,000      | $990              | max−1     | Accepted (no exception) |
+| **TWA_CASE_07** | $1,000      | $1,000            | max       | Accepted (no exception) |
+| **TWA_CASE_08** | $1,000      | $1,010            | max+1     | InvalidAmountException  |
+| **TWA_CASE_09** | $1,000      | $1,020            | extra     | InvalidAmountException  |
 
+----- 
+
+### ATM Session PIN Format (TPF) Test Cases
+
+| Test ID     | Character | Length | Input    | BVA Label               | Expected                  |
+| ----------- | --------- | ------ | -------- | ----------------------- | ------------------------- |
+| **TPF_CASE_01** | '/'       | 6      | `//////` | char: min-1, len: max+1 | InvalidPinFormatException |
+| **TPF_CASE_02** | '/'       | 5      | `/////`  | char: min-1, len: nom   | InvalidPinFormatException |
+| **TPF_CASE_03** | '/'       | 4      | `////`   | char: min-1, len: min-1 | InvalidPinFormatException |
+| **TPF_CASE_04** | '0'       | 6      | `000000` | char: min, len: max+1   | InvalidPinFormatException |
+| **TPF_CASE_05** | '0'       | 5      | `00000`  | char: min, len: nom     | Accepted (no exception)   |
+| **TPF_CASE_06** | '0'       | 4      | `0000`   | char: min, len: min-1   | InvalidPinFormatException |
+| **TPF_CASE_07** | '1'       | 6      | `111111` | char: min+1, len: max+1 | InvalidPinFormatException |
+| **TPF_CASE_08** | '1'       | 5      | `11111`  | char: min+1, len: nom   | Accepted (no exception)   |
+| **TPF_CASE_09** | '1'       | 4      | `1111`   | char: min+1, len: min-1 | InvalidPinFormatException |
+| **TPF_CASE_10** | '4'       | 6      | `444444` | char: nom, len: max+1   | InvalidPinFormatException |
+| **TPF_CASE_11** | '4'       | 5      | `44444`  | char: nom, len: nom     | Accepted (no exception)   |
+| **TPF_CASE_12** | '4'       | 4      | `4444`   | char: nom, len: min-1   | InvalidPinFormatException |
+| **TPF_CASE_13** | '8'       | 6      | `888888` | char: max-1, len: max+1 | InvalidPinFormatException |
+| **TPF_CASE_14** | '8'       | 5      | `88888`  | char: max-1, len: nom   | Accepted (no exception)   |
+| **TPF_CASE_15** | '8'       | 4      | `8888`   | char: max-1, len: min-1 | InvalidPinFormatException |
+| **TPF_CASE_16** | '9'       | 6      | `999999` | char: max, len: max+1   | InvalidPinFormatException |
+| **TPF_CASE_17** | '9'       | 5      | `99999`  | char: max, len: nom     | Accepted (no exception)   |
+| **TPF_CASE_18** | '9'       | 4      | `9999`   | char: max, len: min-1   | InvalidPinFormatException |
+| **TPF_CASE_19** | ':'       | 6      | `::::::` | char: max+1, len: max+1 | InvalidPinFormatException |
+| **TPF_CASE_20** | ':'       | 5      | `:::::`  | char: max+1, len: nom   | InvalidPinFormatException |
+| **TPF_CASE_21** | ':'       | 4      | `::::`   | char: max+1, len: min-1 | InvalidPinFormatException |
+
+-----
 
 
 ## Section 3: Test Results and Fault Localization
@@ -181,6 +255,57 @@ Ran suite with test failures tolerated (as instructed used `mvn -B -Dmaven.test.
 
 ### withdrawal execution results
 
+
+### ATM Session Withdrawal Amount (TWA) Results
+
+Ran suite with test failures tolerated (as instructed used `mvn -B -Dmaven.test.failure.ignore=true test` ):
+
+| Test ID | Function Name | Expected | Actual | Result | Comments |
+| --- | --- | --- | --- | --- | --- |
+| **TWA_CASE_01** | `amountNegative20` | InvalidAmountException | NullPointerException | **FAIL** | No zero/negative check; amount passes CashValidator and the unstubbed transaction returns null |
+| **TWA_CASE_02** | `amount0` | InvalidAmountException | NullPointerException | **FAIL** | No zero/negative check; amount passes CashValidator and the unstubbed transaction returns null |
+| **TWA_CASE_03** | `amount20` | Accepted (no exception) | Accepted (no exception) | **PASS** | |
+| **TWA_CASE_04** | `amount40` | Accepted (no exception) | Accepted (no exception) | **PASS** | |
+| **TWA_CASE_05** | `amount500` | Accepted (no exception) | Accepted (no exception) | **PASS** | |
+| **TWA_CASE_06** | `amount990` | Accepted (no exception) | Accepted (no exception) | **PASS** | |
+| **TWA_CASE_07** | `amount1000` | Accepted (no exception) | Accepted (no exception) | **PASS** | |
+| **TWA_CASE_08** | `amount1010` | InvalidAmountException | InvalidAmountException | **PASS\*** | Passes for the wrong reason: CashValidator's mod-50-then-20 logic rejects $1,010 (valid as 19 × $50 + 3 × $20), masking the missing limit check |
+| **TWA_CASE_09** | `amount1020` | InvalidAmountException | NullPointerException | **FAIL** | No daily-limit check; amount passes CashValidator and the unstubbed transaction returns null |
+
+*\* Passes for the wrong reason; see Comments and Fault Localization.*    
+**Summary:** 6 passed, 3 failed.
+
+### ATM Session PIN Format (TPF) Results
+
+Ran suite with test failures tolerated (as instructed used `mvn -B -Dmaven.test.failure.ignore=true test` ):
+
+| Test ID | Function Name | Expected | Actual | Result | Comments |
+| --- | --- | --- | --- | --- | --- |
+| **TPF_CASE_01** | `pinLen6CharSlash` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_02** | `pinLen5CharSlash` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_03** | `pinLen4CharSlash` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | Length 4 wrongly passes the length check; rejected by the character check |
+| **TPF_CASE_04** | `pinLen6Char0` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_05** | `pinLen5Char0` | Accepted (no exception) | InvalidPinFormatException | **FAIL** | Length check expects 4; spec requires 5 |
+| **TPF_CASE_06** | `pinLen4Char0` | InvalidPinFormatException | InvalidCredentialsException | **FAIL** | Length 4 wrongly accepted; PIN reaches the credentials check |
+| **TPF_CASE_07** | `pinLen6Char1` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_08** | `pinLen5Char1` | Accepted (no exception) | InvalidPinFormatException | **FAIL** | Length check expects 4; spec requires 5 |
+| **TPF_CASE_09** | `pinLen4Char1` | InvalidPinFormatException | InvalidCredentialsException | **FAIL** | Length 4 wrongly accepted; PIN reaches the credentials check |
+| **TPF_CASE_10** | `pinLen6Char4` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_11** | `pinLen5Char4` | Accepted (no exception) | InvalidPinFormatException | **FAIL** | Length check expects 4; spec requires 5 |
+| **TPF_CASE_12** | `pinLen4Char4` | InvalidPinFormatException | InvalidCredentialsException | **FAIL** | Length 4 wrongly accepted; PIN reaches the credentials check |
+| **TPF_CASE_13** | `pinLen6Char8` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_14** | `pinLen5Char8` | Accepted (no exception) | InvalidPinFormatException | **FAIL** | Length check expects 4; spec requires 5 |
+| **TPF_CASE_15** | `pinLen4Char8` | InvalidPinFormatException | InvalidCredentialsException | **FAIL** | Length 4 wrongly accepted; PIN reaches the credentials check |
+| **TPF_CASE_16** | `pinLen6Char9` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_17** | `pinLen5Char9` | Accepted (no exception) | InvalidPinFormatException | **FAIL** | Length check expects 4; the `>= '9'` defect would also reject '9' |
+| **TPF_CASE_18** | `pinLen4Char9` | InvalidPinFormatException | InvalidPinFormatException | **PASS\*** | Passes for the wrong reason: length 4 is wrongly accepted, then `>= '9'` wrongly rejects '9'; the two defects cancel out |
+| **TPF_CASE_19** | `pinLen6CharColon` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_20** | `pinLen5CharColon` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | |
+| **TPF_CASE_21** | `pinLen4CharColon` | InvalidPinFormatException | InvalidPinFormatException | **PASS** | Length 4 wrongly passes the length check; rejected by the character check |
+
+*\* Passes for the wrong reason; see Comments and Fault Localization.*  
+**Summary:** 12 passed, 9 failed.
+
 ---
 
 ### Fault Localization
@@ -196,7 +321,11 @@ Ran suite with test failures tolerated (as instructed used `mvn -B -Dmaven.test.
 | **FL_DP_03** | `D_05`, `D_06` | `bank.utils.FeesCalculator.calculateDepositInterest` | The non-student branch tests `amount > 500.00` instead of the specified `$250.00`. A $500 deposit is more than $250 per the specification, but the code treats it as a small deposit with balance at $10,000 and returns 0 instead of 4.00 and 2.00. |
 | **FL_DP_04** | `D_07`, `D_08` | `bank.utils.FeesCalculator.calculateDepositInterest` | In the non-student, small-amount branch the rates are swapped. The code charges 0.5% when the balance is above $10,000 (expected none) and 0% when it is at most $10,000 (expected 0.1%). |
 | **FL_DP_05** | `D_09`, `D_10` | `bank.utils.FeesCalculator.calculateDepositInterest` | The method does no input validation. A negative amount or negative balance is accepted and no exception is thrown. |
-
+| **FL_PF_01** | `TPF_CASE_05`, `06`, `08`, `09`, `11`, `12`, `14`, `15`, `17` | `atm.utils.FormatChecker.checkPinFormat` | The length check compares `pin.length == 4` instead of the specified 5 digits. Valid 5-digit PINs (e.g. `00000`) are rejected with InvalidPinFormatException, and invalid 4-digit PINs (e.g. `0000`) pass the format check and reach the credentials check, throwing InvalidCredentialsException instead. |
+| **FL_PF_02** | None (masked; `TPF_CASE_18` passes for the wrong reason) | `atm.utils.FormatChecker.checkPinFormat` | The character check uses `pin[i] >= '9'` instead of `> '9'`, so the valid digit '9' is rejected. It is masked by FL_PF_01: `9999` is wrongly accepted by the length check and then wrongly rejected by this check, so the two faults cancel out and the test passes. |
+| **FL_WA_01** | `TWA_CASE_01`, `02` | `atm.utils.CashValidator.validateWithdrawal` | No check that the amount is greater than zero. $0 and −$20 pass the bill-composition check (both divide evenly), so no InvalidAmountException is thrown; the session proceeds to the transaction and a NullPointerException occurs instead. |
+| **FL_WA_02** | None (masked; `TWA_CASE_08` passes for the wrong reason) | `atm.utils.CashValidator.validateWithdrawal` | Bill composition is checked as mod 50 then mod 20, which rejects valid combinations. $1,010 (19 × $50 + 3 × $20) is valid per the specification but is rejected, so TWA_CASE_08 throws InvalidAmountException for the bill rule rather than the daily limit, masking FL_WA_03. |
+| **FL_WA_03** | `TWA_CASE_09` | `atm.session.Session.setAmount` | No daily withdrawal limit check exists in the session or the validator. $1,020 exceeds the specified $1,000 daily limit but is accepted, so no InvalidAmountException is thrown; the session proceeds to the transaction and a NullPointerException occurs instead. |
 
 
 
