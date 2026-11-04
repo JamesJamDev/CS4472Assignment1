@@ -167,7 +167,7 @@ The `atm.session.Session` class was tested using Robust Worst Case Boundary Valu
 
 ### ATM Session Withdrawal Amount (TWA) Test Cases
 
-| Test ID     | Daily Limit | Withdrawal Amount | BVA Value | Expected                |
+| Test ID     | Daily Limit | Withdrawal Amount | Comment | Expected                |
 | ----------- | ----------- | ----------------- | --------- | ----------------------- |
 | **TWA_CASE_01** | $1,000      | −$20              | extra     | InvalidAmountException  |
 | **TWA_CASE_02** | $1,000      | $0                | min−1     | InvalidAmountException  |
@@ -183,7 +183,7 @@ The `atm.session.Session` class was tested using Robust Worst Case Boundary Valu
 
 ### ATM Session PIN Format (TPF) Test Cases
 
-| Test ID     | Character | Length | Input    | BVA Label               | Expected                  |
+| Test ID     | Character | Length | Input    | Comment               | Expected                  |
 | ----------- | --------- | ------ | -------- | ----------------------- | ------------------------- |
 | **TPF_CASE_01** | '/'       | 6      | `//////` | char: min-1, len: max+1 | InvalidPinFormatException |
 | **TPF_CASE_02** | '/'       | 5      | `/////`  | char: min-1, len: nom   | InvalidPinFormatException |
