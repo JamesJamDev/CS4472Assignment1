@@ -69,9 +69,42 @@ Under the **weak robust** approach, each test case covers one valid class for ev
 
 
 
-### Withdrawal fee calculation
+### Withdrawal fee calculation / Robust Worst Case Boundary Value Analysis
 
+#### Process
 
+The specification defines the withdrawal fee in terms of four input variables:
+1. **$V_1$: Student Status (`student`)**: Boolean domain `{true, false}`. It has no boundaries, so it is not a BVA variable; instead it splits the test cases into two groups.
+2. **$V_2$: Withdrawal Amount (`amount`)**: valid range $[\$1, \$1,000]$, where $\$1,000$ is the daily limit.
+3. **$V_3$: Day of the Week (`dayOfWeek`)**: valid range $[1, 7]$ (`Calendar.SUNDAY` = 1 to `Calendar.SATURDAY` = 7). Only relevant for students.
+   - Weekend (Saturday, Sunday): fee is $0.1\%$.
+   - Weekday (Monday to Friday): no fee.
+4. **$V_4$: Account Balance (`accountBalance`)**: valid range $[\$0, \$5,000]$. Only relevant for non-students.
+   - $< \$1,000.00$: fee is $0.3\%$.
+   - $\ge \$1,000.00$ and $< \$5,000.00$: fee is $0.1\%$.
+   - $\ge \$5,000.00$: no fee.
+
+Robust Worst Case BVA takes 7 values per variable($\text{min}^-$, $\text{min}$, $\text{min}^+$, $\text{nom}$, $\text{max}^-$, $\text{max}$, $\text{max}^+$) and tests every combination ($7^n$ cases). Since the fee depends on only two variables per group:
+- **Students:** `amount` $\times$ `dayOfWeek` $= 7^2 = 49$ cases (`W_S01` – `W_S49`), with balance fixed at the nominal $\$2,500$.
+- **Non-students:** `amount` $\times$ `accountBalance` $= 7^2 = 49$ cases (`W_N01` – `W_N49`), with `dayOfWeek` fixed at the nominal 4 (Wednesday).
+
+This give $98$ test cases in total.
+
+| Variable | min- | min | min+ | nom | max- | max | max+ |
+|---|---|---|---|---|---|---|---|
+| `amount` ($) | 0 | 1 | 2 | 500 | 999 | 1,000 | 1,001 |
+| `dayOfWeek` | 0 | 1 (Sun) | 2 (Mon) | 4 (Wed) | 6 (Fri) | 7 (Sat) | 8 |
+| `accountBalance` ($) | -1 | 0 | 1 | 2,500 | 4,999 | 5,000 | 5,001 |
+
+#### Assumptions
+1. The amount is bounded by the $\$1,000$ daily limit, so `amount` > $1,000$ is invalid.
+2. The balance range ends at $\$5,000$, since every balance of $\$5,000$ or more has the same fee (none).
+3. Threshold conditions are evaluated strictly as stated in the specification:
+   - "less than $\$X$" is evaluated as $\text{balance} < X$.
+   - "$\$X$ or more" is evaluated as $\text{balance} \ge X$.
+4. The specification does not define behaviour for invalid inputs (`amount` $\le 0$, `amount` $> 1,000$, `accountBalance` $< 0$, `dayOfWeek` outside $[1, 7]$), so an `IllegalArgumentException` is expected, consistent with the deposit tests.
+5. The calculated fee is computed as:
+   $$\text{Fee} = \text{amount} \times \left(\frac{\text{Fee Rate \%}}{100}\right)$$
 
 ### ATM Session
 
@@ -163,7 +196,115 @@ The `atm.session.Session` class was tested using Robust Worst Case Boundary Valu
 | **D_10** | Invalid balance (negative) | false | 100.00 | -500.00 | n/a | `IllegalArgumentException` |
 
 
-### Withdrawal Test Cases
+### Withdrawal Fee Test Cases
+
+#### Students (`amount` × `dayOfWeek`, balance fixed at $2,500.00)
+
+| Test ID | Amount ($) | Day | Comment | Expected Fee Rate | Expected Fee ($) |
+|---|---|---|---|---|---|
+| **W_S01** | 0.00 | 0 | amount: min-, day: min- | Invalid | `IllegalArgumentException` |
+| **W_S02** | 0.00 | 1 (Sun) | amount: min-, day: min | Invalid | `IllegalArgumentException` |
+| **W_S03** | 0.00 | 2 (Mon) | amount: min-, day: min+ | Invalid | `IllegalArgumentException` |
+| **W_S04** | 0.00 | 4 (Wed) | amount: min-, day: nom | Invalid | `IllegalArgumentException` |
+| **W_S05** | 0.00 | 6 (Fri) | amount: min-, day: max- | Invalid | `IllegalArgumentException` |
+| **W_S06** | 0.00 | 7 (Sat) | amount: min-, day: max | Invalid | `IllegalArgumentException` |
+| **W_S07** | 0.00 | 8 | amount: min-, day: max+ | Invalid | `IllegalArgumentException` |
+| **W_S08** | 1.00 | 0 | amount: min, day: min- | Invalid | `IllegalArgumentException` |
+| **W_S09** | 1.00 | 1 (Sun) | amount: min, day: min | 0.1% | 0.001 |
+| **W_S10** | 1.00 | 2 (Mon) | amount: min, day: min+ | 0% | 0.000 |
+| **W_S11** | 1.00 | 4 (Wed) | amount: min, day: nom | 0% | 0.000 |
+| **W_S12** | 1.00 | 6 (Fri) | amount: min, day: max- | 0% | 0.000 |
+| **W_S13** | 1.00 | 7 (Sat) | amount: min, day: max | 0.1% | 0.001 |
+| **W_S14** | 1.00 | 8 | amount: min, day: max+ | Invalid | `IllegalArgumentException` |
+| **W_S15** | 2.00 | 0 | amount: min+, day: min- | Invalid | `IllegalArgumentException` |
+| **W_S16** | 2.00 | 1 (Sun) | amount: min+, day: min | 0.1% | 0.002 |
+| **W_S17** | 2.00 | 2 (Mon) | amount: min+, day: min+ | 0% | 0.000 |
+| **W_S18** | 2.00 | 4 (Wed) | amount: min+, day: nom | 0% | 0.000 |
+| **W_S19** | 2.00 | 6 (Fri) | amount: min+, day: max- | 0% | 0.000 |
+| **W_S20** | 2.00 | 7 (Sat) | amount: min+, day: max | 0.1% | 0.002 |
+| **W_S21** | 2.00 | 8 | amount: min+, day: max+ | Invalid | `IllegalArgumentException` |
+| **W_S22** | 500.00 | 0 | amount: nom, day: min- | Invalid | `IllegalArgumentException` |
+| **W_S23** | 500.00 | 1 (Sun) | amount: nom, day: min | 0.1% | 0.500 |
+| **W_S24** | 500.00 | 2 (Mon) | amount: nom, day: min+ | 0% | 0.000 |
+| **W_S25** | 500.00 | 4 (Wed) | amount: nom, day: nom | 0% | 0.000 |
+| **W_S26** | 500.00 | 6 (Fri) | amount: nom, day: max- | 0% | 0.000 |
+| **W_S27** | 500.00 | 7 (Sat) | amount: nom, day: max | 0.1% | 0.500 |
+| **W_S28** | 500.00 | 8 | amount: nom, day: max+ | Invalid | `IllegalArgumentException` |
+| **W_S29** | 999.00 | 0 | amount: max-, day: min- | Invalid | `IllegalArgumentException` |
+| **W_S30** | 999.00 | 1 (Sun) | amount: max-, day: min | 0.1% | 0.999 |
+| **W_S31** | 999.00 | 2 (Mon) | amount: max-, day: min+ | 0% | 0.000 |
+| **W_S32** | 999.00 | 4 (Wed) | amount: max-, day: nom | 0% | 0.000 |
+| **W_S33** | 999.00 | 6 (Fri) | amount: max-, day: max- | 0% | 0.000 |
+| **W_S34** | 999.00 | 7 (Sat) | amount: max-, day: max | 0.1% | 0.999 |
+| **W_S35** | 999.00 | 8 | amount: max-, day: max+ | Invalid | `IllegalArgumentException` |
+| **W_S36** | 1,000.00 | 0 | amount: max, day: min- | Invalid | `IllegalArgumentException` |
+| **W_S37** | 1,000.00 | 1 (Sun) | amount: max, day: min | 0.1% | 1.000 |
+| **W_S38** | 1,000.00 | 2 (Mon) | amount: max, day: min+ | 0% | 0.000 |
+| **W_S39** | 1,000.00 | 4 (Wed) | amount: max, day: nom | 0% | 0.000 |
+| **W_S40** | 1,000.00 | 6 (Fri) | amount: max, day: max- | 0% | 0.000 |
+| **W_S41** | 1,000.00 | 7 (Sat) | amount: max, day: max | 0.1% | 1.000 |
+| **W_S42** | 1,000.00 | 8 | amount: max, day: max+ | Invalid | `IllegalArgumentException` |
+| **W_S43** | 1,001.00 | 0 | amount: max+, day: min- | Invalid | `IllegalArgumentException` |
+| **W_S44** | 1,001.00 | 1 (Sun) | amount: max+, day: min | Invalid | `IllegalArgumentException` |
+| **W_S45** | 1,001.00 | 2 (Mon) | amount: max+, day: min+ | Invalid | `IllegalArgumentException` |
+| **W_S46** | 1,001.00 | 4 (Wed) | amount: max+, day: nom | Invalid | `IllegalArgumentException` |
+| **W_S47** | 1,001.00 | 6 (Fri) | amount: max+, day: max- | Invalid | `IllegalArgumentException` |
+| **W_S48** | 1,001.00 | 7 (Sat) | amount: max+, day: max | Invalid | `IllegalArgumentException` |
+| **W_S49** | 1,001.00 | 8 | amount: max+, day: max+ | Invalid | `IllegalArgumentException` |
+
+#### Non-students (`amount` × `accountBalance`, day fixed at 4, Wednesday)
+
+| Test ID | Amount ($) | Balance ($) | Comment | Expected Fee Rate | Expected Fee ($) |
+|---|---|---|---|---|---|
+| **W_N01** | 0.00 | -1.00 | amount: min-, balance: min- | Invalid | `IllegalArgumentException` |
+| **W_N02** | 0.00 | 0.00 | amount: min-, balance: min | Invalid | `IllegalArgumentException` |
+| **W_N03** | 0.00 | 1.00 | amount: min-, balance: min+ | Invalid | `IllegalArgumentException` |
+| **W_N04** | 0.00 | 2,500.00 | amount: min-, balance: nom | Invalid | `IllegalArgumentException` |
+| **W_N05** | 0.00 | 4,999.00 | amount: min-, balance: max- | Invalid | `IllegalArgumentException` |
+| **W_N06** | 0.00 | 5,000.00 | amount: min-, balance: max | Invalid | `IllegalArgumentException` |
+| **W_N07** | 0.00 | 5,001.00 | amount: min-, balance: max+ | Invalid | `IllegalArgumentException` |
+| **W_N08** | 1.00 | -1.00 | amount: min, balance: min- | Invalid | `IllegalArgumentException` |
+| **W_N09** | 1.00 | 0.00 | amount: min, balance: min | 0.3% | 0.003 |
+| **W_N10** | 1.00 | 1.00 | amount: min, balance: min+ | 0.3% | 0.003 |
+| **W_N11** | 1.00 | 2,500.00 | amount: min, balance: nom | 0.1% | 0.001 |
+| **W_N12** | 1.00 | 4,999.00 | amount: min, balance: max- | 0.1% | 0.001 |
+| **W_N13** | 1.00 | 5,000.00 | amount: min, balance: max | 0% | 0.000 |
+| **W_N14** | 1.00 | 5,001.00 | amount: min, balance: max+ | 0% | 0.000 |
+| **W_N15** | 2.00 | -1.00 | amount: min+, balance: min- | Invalid | `IllegalArgumentException` |
+| **W_N16** | 2.00 | 0.00 | amount: min+, balance: min | 0.3% | 0.006 |
+| **W_N17** | 2.00 | 1.00 | amount: min+, balance: min+ | 0.3% | 0.006 |
+| **W_N18** | 2.00 | 2,500.00 | amount: min+, balance: nom | 0.1% | 0.002 |
+| **W_N19** | 2.00 | 4,999.00 | amount: min+, balance: max- | 0.1% | 0.002 |
+| **W_N20** | 2.00 | 5,000.00 | amount: min+, balance: max | 0% | 0.000 |
+| **W_N21** | 2.00 | 5,001.00 | amount: min+, balance: max+ | 0% | 0.000 |
+| **W_N22** | 500.00 | -1.00 | amount: nom, balance: min- | Invalid | `IllegalArgumentException` |
+| **W_N23** | 500.00 | 0.00 | amount: nom, balance: min | 0.3% | 1.500 |
+| **W_N24** | 500.00 | 1.00 | amount: nom, balance: min+ | 0.3% | 1.500 |
+| **W_N25** | 500.00 | 2,500.00 | amount: nom, balance: nom | 0.1% | 0.500 |
+| **W_N26** | 500.00 | 4,999.00 | amount: nom, balance: max- | 0.1% | 0.500 |
+| **W_N27** | 500.00 | 5,000.00 | amount: nom, balance: max | 0% | 0.000 |
+| **W_N28** | 500.00 | 5,001.00 | amount: nom, balance: max+ | 0% | 0.000 |
+| **W_N29** | 999.00 | -1.00 | amount: max-, balance: min- | Invalid | `IllegalArgumentException` |
+| **W_N30** | 999.00 | 0.00 | amount: max-, balance: min | 0.3% | 2.997 |
+| **W_N31** | 999.00 | 1.00 | amount: max-, balance: min+ | 0.3% | 2.997 |
+| **W_N32** | 999.00 | 2,500.00 | amount: max-, balance: nom | 0.1% | 0.999 |
+| **W_N33** | 999.00 | 4,999.00 | amount: max-, balance: max- | 0.1% | 0.999 |
+| **W_N34** | 999.00 | 5,000.00 | amount: max-, balance: max | 0% | 0.000 |
+| **W_N35** | 999.00 | 5,001.00 | amount: max-, balance: max+ | 0% | 0.000 |
+| **W_N36** | 1,000.00 | -1.00 | amount: max, balance: min- | Invalid | `IllegalArgumentException` |
+| **W_N37** | 1,000.00 | 0.00 | amount: max, balance: min | 0.3% | 3.000 |
+| **W_N38** | 1,000.00 | 1.00 | amount: max, balance: min+ | 0.3% | 3.000 |
+| **W_N39** | 1,000.00 | 2,500.00 | amount: max, balance: nom | 0.1% | 1.000 |
+| **W_N40** | 1,000.00 | 4,999.00 | amount: max, balance: max- | 0.1% | 1.000 |
+| **W_N41** | 1,000.00 | 5,000.00 | amount: max, balance: max | 0% | 0.000 |
+| **W_N42** | 1,000.00 | 5,001.00 | amount: max, balance: max+ | 0% | 0.000 |
+| **W_N43** | 1,001.00 | -1.00 | amount: max+, balance: min- | Invalid | `IllegalArgumentException` |
+| **W_N44** | 1,001.00 | 0.00 | amount: max+, balance: min | Invalid | `IllegalArgumentException` |
+| **W_N45** | 1,001.00 | 1.00 | amount: max+, balance: min+ | Invalid | `IllegalArgumentException` |
+| **W_N46** | 1,001.00 | 2,500.00 | amount: max+, balance: nom | Invalid | `IllegalArgumentException` |
+| **W_N47** | 1,001.00 | 4,999.00 | amount: max+, balance: max- | Invalid | `IllegalArgumentException` |
+| **W_N48** | 1,001.00 | 5,000.00 | amount: max+, balance: max | Invalid | `IllegalArgumentException` |
+| **W_N49** | 1,001.00 | 5,001.00 | amount: max+, balance: max+ | Invalid | `IllegalArgumentException` |
 
 ### ATM Session Withdrawal Amount (TWA) Test Cases
 
@@ -253,7 +394,112 @@ Ran suite with test failures tolerated (as instructed used `mvn -B -Dmaven.test.
 | **D_10** | `testInvalidBalance` | `IllegalArgumentException` | no exception thrown | **FAIL** | 
 
 
-### withdrawal execution results
+### Withdrawal Fee Test Execution Results
+
+Ran suite with test failures tolerated (as instructed used `mvn -B -Dmaven.test.failure.ignore=true test` ):
+
+| Test ID | Method | Expected | Actual | Result |
+|---|---|---|---|---|
+| **W_S01** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S02** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S03** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S04** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S05** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S06** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S07** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S08** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.001) | **FAIL** |
+| **W_S09** | `testStudentWithdrawalFee` | 0.001 | 0.000 | **FAIL** |
+| **W_S10** | `testStudentWithdrawalFee` | 0.000 | 0.001 | **FAIL** |
+| **W_S11** | `testStudentWithdrawalFee` | 0.000 | 0.001 | **FAIL** |
+| **W_S12** | `testStudentWithdrawalFee` | 0.000 | 0.001 | **FAIL** |
+| **W_S13** | `testStudentWithdrawalFee` | 0.001 | 0.000 | **FAIL** |
+| **W_S14** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.001) | **FAIL** |
+| **W_S15** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.002) | **FAIL** |
+| **W_S16** | `testStudentWithdrawalFee` | 0.002 | 0.000 | **FAIL** |
+| **W_S17** | `testStudentWithdrawalFee` | 0.000 | 0.002 | **FAIL** |
+| **W_S18** | `testStudentWithdrawalFee` | 0.000 | 0.002 | **FAIL** |
+| **W_S19** | `testStudentWithdrawalFee` | 0.000 | 0.002 | **FAIL** |
+| **W_S20** | `testStudentWithdrawalFee` | 0.002 | 0.000 | **FAIL** |
+| **W_S21** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.002) | **FAIL** |
+| **W_S22** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.500) | **FAIL** |
+| **W_S23** | `testStudentWithdrawalFee` | 0.500 | 0.000 | **FAIL** |
+| **W_S24** | `testStudentWithdrawalFee` | 0.000 | 0.500 | **FAIL** |
+| **W_S25** | `testStudentWithdrawalFee` | 0.000 | 0.500 | **FAIL** |
+| **W_S26** | `testStudentWithdrawalFee` | 0.000 | 0.500 | **FAIL** |
+| **W_S27** | `testStudentWithdrawalFee` | 0.500 | 0.000 | **FAIL** |
+| **W_S28** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.500) | **FAIL** |
+| **W_S29** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.999) | **FAIL** |
+| **W_S30** | `testStudentWithdrawalFee` | 0.999 | 0.000 | **FAIL** |
+| **W_S31** | `testStudentWithdrawalFee` | 0.000 | 0.999 | **FAIL** |
+| **W_S32** | `testStudentWithdrawalFee` | 0.000 | 0.999 | **FAIL** |
+| **W_S33** | `testStudentWithdrawalFee` | 0.000 | 0.999 | **FAIL** |
+| **W_S34** | `testStudentWithdrawalFee` | 0.999 | 0.000 | **FAIL** |
+| **W_S35** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.999) | **FAIL** |
+| **W_S36** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.000) | **FAIL** |
+| **W_S37** | `testStudentWithdrawalFee` | 1.000 | 0.000 | **FAIL** |
+| **W_S38** | `testStudentWithdrawalFee` | 0.000 | 1.000 | **FAIL** |
+| **W_S39** | `testStudentWithdrawalFee` | 0.000 | 1.000 | **FAIL** |
+| **W_S40** | `testStudentWithdrawalFee` | 0.000 | 1.000 | **FAIL** |
+| **W_S41** | `testStudentWithdrawalFee` | 1.000 | 0.000 | **FAIL** |
+| **W_S42** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.000) | **FAIL** |
+| **W_S43** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+| **W_S44** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S45** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+| **W_S46** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+| **W_S47** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+| **W_S48** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_S49** | `testStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+| **W_N01** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_N02** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_N03** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_N04** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_N05** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_N06** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_N07** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.000) | **FAIL** |
+| **W_N08** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.002) | **FAIL** |
+| **W_N09** | `testNonStudentWithdrawalFee` | 0.003 | 0.002 | **FAIL** |
+| **W_N10** | `testNonStudentWithdrawalFee` | 0.003 | 0.002 | **FAIL** |
+| **W_N11** | `testNonStudentWithdrawalFee` | 0.001 | 0.001 | **PASS** |
+| **W_N12** | `testNonStudentWithdrawalFee` | 0.001 | 0.001 | **PASS** |
+| **W_N13** | `testNonStudentWithdrawalFee` | 0.000 | 0.001 | **FAIL** |
+| **W_N14** | `testNonStudentWithdrawalFee` | 0.000 | 0.001 | **FAIL** |
+| **W_N15** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (0.004) | **FAIL** |
+| **W_N16** | `testNonStudentWithdrawalFee` | 0.006 | 0.004 | **FAIL** |
+| **W_N17** | `testNonStudentWithdrawalFee` | 0.006 | 0.004 | **FAIL** |
+| **W_N18** | `testNonStudentWithdrawalFee` | 0.002 | 0.002 | **PASS** |
+| **W_N19** | `testNonStudentWithdrawalFee` | 0.002 | 0.002 | **PASS** |
+| **W_N20** | `testNonStudentWithdrawalFee` | 0.000 | 0.002 | **FAIL** |
+| **W_N21** | `testNonStudentWithdrawalFee` | 0.000 | 0.002 | **FAIL** |
+| **W_N22** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.000) | **FAIL** |
+| **W_N23** | `testNonStudentWithdrawalFee` | 1.500 | 1.000 | **FAIL** |
+| **W_N24** | `testNonStudentWithdrawalFee` | 1.500 | 1.000 | **FAIL** |
+| **W_N25** | `testNonStudentWithdrawalFee` | 0.500 | 0.500 | **PASS** |
+| **W_N26** | `testNonStudentWithdrawalFee` | 0.500 | 0.500 | **PASS** |
+| **W_N27** | `testNonStudentWithdrawalFee` | 0.000 | 0.500 | **FAIL** |
+| **W_N28** | `testNonStudentWithdrawalFee` | 0.000 | 0.500 | **FAIL** |
+| **W_N29** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.998) | **FAIL** |
+| **W_N30** | `testNonStudentWithdrawalFee` | 2.997 | 1.998 | **FAIL** |
+| **W_N31** | `testNonStudentWithdrawalFee` | 2.997 | 1.998 | **FAIL** |
+| **W_N32** | `testNonStudentWithdrawalFee` | 0.999 | 0.999 | **PASS** |
+| **W_N33** | `testNonStudentWithdrawalFee` | 0.999 | 0.999 | **PASS** |
+| **W_N34** | `testNonStudentWithdrawalFee` | 0.000 | 0.999 | **FAIL** |
+| **W_N35** | `testNonStudentWithdrawalFee` | 0.000 | 0.999 | **FAIL** |
+| **W_N36** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (2.000) | **FAIL** |
+| **W_N37** | `testNonStudentWithdrawalFee` | 3.000 | 2.000 | **FAIL** |
+| **W_N38** | `testNonStudentWithdrawalFee` | 3.000 | 2.000 | **FAIL** |
+| **W_N39** | `testNonStudentWithdrawalFee` | 1.000 | 1.000 | **PASS** |
+| **W_N40** | `testNonStudentWithdrawalFee` | 1.000 | 1.000 | **PASS** |
+| **W_N41** | `testNonStudentWithdrawalFee` | 0.000 | 1.000 | **FAIL** |
+| **W_N42** | `testNonStudentWithdrawalFee` | 0.000 | 1.000 | **FAIL** |
+| **W_N43** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (2.002) | **FAIL** |
+| **W_N44** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (2.002) | **FAIL** |
+| **W_N45** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (2.002) | **FAIL** |
+| **W_N46** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+| **W_N47** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+| **W_N48** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+| **W_N49** | `testNonStudentWithdrawalFee` | `IllegalArgumentException` | no exception thrown (1.001) | **FAIL** |
+
+**Summary:** 10 passed, 88 failed (students: 0 passed, 49 failed; non-students: 10 passed, 39 failed).
 
 
 ### ATM Session Withdrawal Amount (TWA) Results
@@ -326,6 +572,10 @@ Ran suite with test failures tolerated (as instructed used `mvn -B -Dmaven.test.
 | **FL_WA_01** | `TWA_CASE_01`, `02` | `atm.utils.CashValidator.validateWithdrawal` | No check that the amount is greater than zero. $0 and −$20 pass the bill-composition check (both divide evenly), so no InvalidAmountException is thrown; the session proceeds to the transaction and a NullPointerException occurs instead. |
 | **FL_WA_02** | None (masked; `TWA_CASE_08` passes for the wrong reason) | `atm.utils.CashValidator.validateWithdrawal` | Bill composition is checked as mod 50 then mod 20, which rejects valid combinations. $1,010 (19 × $50 + 3 × $20) is valid per the specification but is rejected, so TWA_CASE_08 throws InvalidAmountException for the bill rule rather than the daily limit, masking FL_WA_03. |
 | **FL_WA_03** | `TWA_CASE_09` | `atm.session.Session.setAmount` | No daily withdrawal limit check exists in the session or the validator. $1,020 exceeds the specified $1,000 daily limit but is accepted, so no InvalidAmountException is thrown; the session proceeds to the transaction and a NullPointerException occurs instead. |
+| **FL_WD_01** | `W_S09`, `W_S10`, `W_S11`, `W_S12`, `W_S13`, `W_S16`, `W_S17`, `W_S18`, `W_S19`, `W_S20`, `W_S23`, `W_S24`, `W_S25`, `W_S26`, `W_S27`, `W_S30`, `W_S31`, `W_S32`, `W_S33`, `W_S34`, `W_S37`, `W_S38`, `W_S39`, `W_S40`, `W_S41` | `bank.utils.FeesCalculator.calculateWithdrawalFee` | In the student branch the weekday and weekend rates are swapped. The code sets `feePercentage = 0.0` for Saturday/Sunday and `0.001` otherwise, while the specification says there is no fee on weekdays and 0.1% on weekends (e.g. a $500 withdrawal on Monday returns 0.500 instead of 0.000). |
+| **FL_WD_02** | `W_N09`, `W_N10`, `W_N16`, `W_N17`, `W_N23`, `W_N24`, `W_N30`, `W_N31`, `W_N37`, `W_N38` | `bank.utils.FeesCalculator.calculateWithdrawalFee` | For non-students with a balance below \$1,000 the code uses `feePercentage = 0.002` (0.2%) instead of the specified 0.3%, so a \$1,000 withdrawal returns 2.000 instead of 3.000. |
+| **FL_WD_03** | `W_N13`, `W_N14`, `W_N20`, `W_N21`, `W_N27`, `W_N28`, `W_N34`, `W_N35`, `W_N41`, `W_N42` | `bank.utils.FeesCalculator.calculateWithdrawalFee` | The non-student middle band is checked as `accountBalance < 10000.00` instead of the specified `$5,000.00`. Balances of \$5,000 or more should have no fee, but the code still charges 0.1%. |
+| **FL_WD_04** | All 43 invalid cases (`amount` 0 or 1,001, `accountBalance` −1, `dayOfWeek` 0 or 8) | `bank.utils.FeesCalculator.calculateWithdrawalFee` | The method does no input validation. Out-of-range amounts, a negative balance and days outside 1–7 are accepted and no exception is thrown; days 0 and 8 are silently treated as weekdays. |
 
 
 
